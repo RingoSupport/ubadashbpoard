@@ -1,0 +1,25 @@
+.progress-bar {
+	width: 100%;
+	height: 30px;
+	display: flex;
+}
+
+.segment {
+	height: 100%;
+}
+
+.delivered {
+	background-color: green;
+}
+
+.undelivered {
+	background-color: yellow;
+}
+
+.pending {
+	background-color: red;
+}
+
+.expired {
+	background-color: yellow;
+}

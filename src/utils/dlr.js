@@ -1,13 +1,11 @@
-export const checkDlr = (dlr) => {
-	if (dlr === "1") {
-		return "ACK";
-	} else if (dlr === "2") {
-		return "DLIVRD";
-	} else if (dlr === "3") {
-		return "EXPIRD";
-	} else if (dlr === "5") {
-		return "UNDLIVRD";
-	} else if (dlr === "8") {
-		return "REJECTD";
+export const network = (item) => {
+	if (item === "1") {
+		return "MTN";
+	} else if (item === "2") {
+		return "Airtel";
+	} else if (item === "3") {
+		return "Glo";
+	} else {
+		return "9mobile";
 	}
 };

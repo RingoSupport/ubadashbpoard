@@ -1,0 +1,16 @@
+{
+	"statusCode": 90000,
+	"message": "Electricity bill payment was successful",
+	"data": {
+		"transactionRef": "1737985694613",
+		"transactionStatus": "SUCCESSFUL",
+		"data": {
+			"statusCode": "successful",
+			"transactionReference": "1737985694613",
+			"transactionMessage": "",
+			"tokenCode": "4.34kwH",
+			"tokenAmount": 1000,
+			"creditToken": "1234 1234 8793 9847 3749"
+		}
+	}
+}

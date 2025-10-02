@@ -1,129 +1,362 @@
+/* eslint-disable react-hooks/exhaustive-deps */
 import axios from "axios";
 import React, { useEffect, useState } from "react";
 import { DataGrid } from "@mui/x-data-grid";
-import { checkDlr } from "../utils/dlr";
 import FadeLoader from "react-spinners/FadeLoader";
+import { FaDownload, FaFilter, FaSearch } from "react-icons/fa";
+import { CSVLink } from "react-csv";
 
 export const Transactions = () => {
+	const [page, setPage] = useState(1);
+	const rowsPerPage = 1000;
 	const [dataItems, setDataItems] = useState([]);
 	const [initialData, setinitialData] = useState([]);
+	const [initialFilteredRenderedData, setinitialFilteredRenderedData] =
+		useState([]);
+	const [downloadButton, setDownloadButton] = useState(false);
+	const [timeStamp, setTimeStamp] = useState({ from: "", to: "" });
 	const [loading, setLoading] = useState(false);
 	const [filterValue, setFilterValue] = useState("");
+	const [status, setStatus] = useState("");
+	const [telco, setTelco] = useState("");
+	const errorCodeDescriptions = {
+		"000": "Delivered",
+		100: "Delivered",
+		"2:000": "Delivered",
+		201: "Unknown Subscriber",
+		205: "Unidentified Subscriber",
+		"0dc": "Absent Subscriber",
+		"21b": "Absent Subscriber",
+		"023": "Absent Subscriber",
+		"027": "Absent Subscriber",
+		"053": "Absent Subscriber",
+		"054": "Absent Subscriber",
+		"058": "Absent Subscriber",
+		206: "Absent Subscriber (MT/SRI)",
+		602: "Absent Subscriber (MT)",
+		"20d": "Call Barred / On DND",
+		525: "Call barred as well",
+		439: "Subscriber is barred",
+		130: "Subscriber is barred on the network",
+		131: "Subscriber is barred on the network",
+		"21f": "Subscriber Busy for MT",
+		21: "Subscriber Busy for MT",
+		215: "Facility Not Supported",
+		254: "Subscriber's phone inbox is full",
+		220: "Subscriber's phone inbox is full",
+		120: "Subscriber's phone inbox is full",
+		"008": "Subscriber's phone inbox is full",
+		0: "Subscriber's phone inbox is full",
+		407: "MSC Timeout",
+		307: "HLR Timeout",
+		222: "Network System Failure",
+		306: "Network System Failure",
+		"032": "Network operator system failure or operator not supported",
+		"082": "Network operator not supported",
+		"40a": "MAP Abort",
+		102: "Tele service not provisioned",
+		"20b": "Tele service not provisioned",
+		600: "Destination Acc ID IMSI barring",
+		"065": "Submit Error",
+		"069": "Submit Error",
+		72: "Wrong TON/NPI",
+		255: "Inactive mobile number",
+		"004": "Inactive mobile number",
+		510: "Ported mobile number",
+		"085": "Subscriber is on DND",
+		"00a": "SenderID is restricted by the operator",
+		"078": "Restricted message content or senderID is blocked.",
+		432: "Restricted message content or senderID is blocked.",
+	};
 
-	const [rangeValue, setRangeValue] = useState({ number: "", range: "" });
-
-	const filterTable = (val) => {
-		setFilterValue(val);
-		if (filterValue.length > 0) {
-			const filteredData = dataItems.filter((item) =>
-				item.ssml_subscriber_number.includes(filterValue)
+	function isObject(obj) {
+		try {
+			let parsedObject = JSON.parse(obj);
+			return (
+				parsedObject !== undefined &&
+				parsedObject !== null &&
+				parsedObject.constructor == Object
 			);
-			setinitialData(filteredData);
-		} else {
-			setinitialData(dataItems);
+		} catch {
+			return false;
+		}
+	}
+
+	const getNetwork = (msisdn) => {
+		// Placeholder function - implement your network detection logic
+		const prefix = msisdn?.substring(0, 4);
+		if (["2348", "2347"].includes(prefix)) return "MTN";
+		if (["2349"].includes(prefix)) return "9mobile";
+		if (["2350"].includes(prefix)) return "Glo";
+		return "Airtel";
+	};
+
+	const getErrorCodeDescription = (report) => {
+		try {
+			if (
+				typeof report === "string" &&
+				errorCodeDescriptions[report] !== undefined
+			) {
+				return `${report}: ${errorCodeDescriptions[report]}`;
+			} else if (isObject(report)) {
+				const parsedReport = JSON.parse(report);
+				const message = parsedReport.message || "";
+				const errorCodeMatch = message.match(/err:([0-9a-zA-Z]+)/);
+				if (errorCodeMatch) {
+					const errorCode = errorCodeMatch[1];
+					const description = errorCodeDescriptions[errorCode];
+					return description ? `${errorCode}: ${description}` : errorCode;
+				}
+			}
+			return "Awaiting DLR";
+		} catch (e) {
+			console.error("Error in getErrorCodeDescription:", e);
+			return "Awaiting DLR";
 		}
 	};
 
-	const handleChange = (e) => {
-		const { name, value } = e.target;
-
-		setRangeValue({ ...rangeValue, [name]: value });
-		console.log(rangeValue);
-	};
-
-	const handleSubmit = async (e) => {
-		e.preventDefault();
-
-		if (!rangeValue.number && !rangeValue.range) {
-			return alert("please select a filter value");
-		}
-		const dateRange = calculateDateRange(rangeValue.range);
-		console.log(dateRange);
+	const filterTable = async () => {
 		setLoading(true);
 		try {
-			const { data } = await axios.get(
-				`http://34.118.77.154:9091/php/filterByValue.php?phone=${rangeValue.number}&from=${dateRange.startDate}&to=${dateRange.endDate}`
+			let formattedValue =
+				filterValue.length === 11 ? "234" + filterValue.slice(1) : filterValue;
+
+			const { data: portingData } = await axios.get(
+				`https://ubasms.approot.ng/php/searchPorting.php?phone=${formattedValue}`
 			);
-			setDataItems(data);
-			setinitialData(data);
+
+			const validNetworks = ["MTN", "Airtel", "Glo", "9mobile"];
+			const isValidNetwork = validNetworks.includes(portingData);
+
+			const { data } = await axios.get(
+				`https://ubasms.approot.ng/php/ubaPhoneSearch2.php?phone=${formattedValue}`
+			);
+
+			const updatedData = data.map((item) => ({
+				...item,
+				network: isValidNetwork ? portingData : item.network,
+			}));
+
+			const sortedData = updatedData.sort(
+				(a, b) => new Date(b.created_at) - new Date(a.created_at)
+			);
+
+			setinitialData(sortedData);
+			setinitialFilteredRenderedData(sortedData);
+			setDownloadButton(true);
 			setLoading(false);
+			setPage(page + 1);
 		} catch (error) {
-			console.log(error);
+			console.error("Error fetching data:", error);
 			setLoading(false);
 		}
 	};
 
-	const calculateDateRange = (selectedOption) => {
-		const today = new Date();
-		let startDate;
-		let endDate;
-
-		if (selectedOption === "last2days") {
-			startDate = new Date(today);
-			startDate.setDate(today.getDate() - 2);
-		} else if (selectedOption === "last7days") {
-			startDate = new Date(today);
-			startDate.setDate(today.getDate() - 7);
-		} else if (selectedOption === "lastMonth") {
-			startDate = new Date(today);
-			startDate.setMonth(today.getMonth() - 1);
+	const getDlrStatusDescription = (status) => {
+		switch (status) {
+			case "":
+				return "Pending";
+			case "DELIVRD":
+				return "Delivered";
+			case "EXPIRED":
+				return "Expired";
+			case "UNDELIV":
+				return "Undelivered";
+			case "REJECTD":
+				return "Rejected";
+			case null:
+				return "Sent";
+			default:
+				return "Delivered";
 		}
-		endDate = new Date(today);
-		endDate.setHours(23, 59, 59, 999); // Set the time to 11:59:59
-
-		return {
-			startDate: startDate.toISOString().slice(0, 19).replace("T", " "), // Format as 'YYYY-MM-DD HH:MM:SS'
-			endDate: endDate.toISOString().slice(0, 19).replace("T", " "), // Format as 'YYYY-MM-DD HH:MM:SS'
-		};
 	};
-	const newColumns = [
-		{ field: "pk_ssml_log_time", headerName: "Timestamp", width: 200 },
-		{ field: "ssml_called_number", headerName: "From", width: 100 },
-		{ field: "ssml_calling_number", headerName: "To", width: 100 },
+
+	const transformDataForCSV = (data) => {
+		return data.map((row) => ({
+			msisdn: "'" + row.msisdn,
+			network: getNetwork(row.msisdn),
+			senderid: row.senderid || "UBA",
+			created_at: row.created_at,
+			status: getDlrStatusDescription(row.dlr_status),
+			error_code: getErrorCodeDescription(row.dlr_request),
+			externalMessageId: window.crypto.randomUUID(),
+			message: row.text,
+			requestType: "SMS",
+		}));
+	};
+
+	const handleTimestamp = (e) => {
+		e.preventDefault();
+		const fromDate = new Date(timeStamp.from);
+		const toDate = new Date(timeStamp.to);
+
+		const filtered = initialFilteredRenderedData.filter((item) => {
+			const itemDate = new Date(item.created_at);
+			return itemDate >= fromDate && itemDate <= toDate;
+		});
+
+		const sortedFiltered = filtered.sort(
+			(a, b) => new Date(b.created_at) - new Date(a.created_at)
+		);
+		setinitialData(sortedFiltered);
+	};
+
+	const dbColumns = [
 		{
-			field: "ssml_correlate_id",
-			headerName: "Correlate ID",
-			type: "number",
-			width: 150,
+			field: "id",
+			headerName: "ID",
+			width: 80,
+			headerAlign: "left",
+			align: "left",
 		},
 		{
-			field: "ssml_result",
-			headerName: "Status",
-			sortable: false,
-			width: 100,
-			valueGetter: (params) => `${checkDlr(params.row.ssml_result)}`,
-		},
-		{
-			field: "ssml_smpp_message_id",
-			headerName: "Message ID",
-			type: "number",
-			width: 200,
-		},
-		{
-			field: "ssml_content",
+			field: "text",
 			headerName: "Message",
-			type: "number",
-			width: 200,
+			width: 250,
+			headerAlign: "left",
+			align: "left",
 		},
 		{
-			field: "ssml_subscriber_number",
-			headerName: "Subscriber Number",
-			type: "number",
+			field: "msisdn",
+			headerName: "Recipient",
+			width: 140,
+			headerAlign: "left",
+			align: "left",
+		},
+		{
+			field: "network",
+			headerName: "Network",
 			width: 120,
+			valueGetter: (params) => {
+				const network = params.row.network;
+				if (
+					!network ||
+					(network !== "Glo" && network !== "9mobile" && network !== "Airtel")
+				) {
+					return getNetwork(params.row.msisdn);
+				}
+				return network;
+			},
+			headerAlign: "left",
+			align: "left",
+		},
+		{
+			field: "senderid",
+			headerName: "Sender ID",
+			width: 120,
+			headerAlign: "left",
+			align: "left",
+			valueGetter: (params) => params.row?.senderid || "UBA",
+		},
+		{
+			field: "created_at",
+			headerName: "Date Time",
+			width: 180,
+			headerAlign: "left",
+			align: "left",
+		},
+		{
+			field: "dlr_status",
+			headerName: "Status",
+			width: 140,
+			headerAlign: "left",
+			align: "left",
+			renderCell: (params) => {
+				const statusMap = {
+					"": {
+						label: "Pending",
+						class: "bg-yellow-100 text-yellow-700 border-yellow-300",
+					},
+					DELIVRD: {
+						label: "Delivered",
+						class: "bg-green-100 text-green-700 border-green-300",
+					},
+					EXPIRED: {
+						label: "Expired",
+						class: "bg-gray-100 text-gray-700 border-gray-300",
+					},
+					UNDELIV: {
+						label: "Undelivered",
+						class: "bg-red-100 text-red-700 border-red-300",
+					},
+					REJECTD: {
+						label: "Rejected",
+						class: "bg-red-100 text-red-700 border-red-300",
+					},
+				};
+				const status = statusMap[params.row.dlr_status] || {
+					label: "Sent",
+					class: "bg-blue-100 text-blue-700 border-blue-300",
+				};
+				return (
+					<span
+						className={`px-2 py-1 rounded-md text-xs font-medium border ${status.class}`}
+					>
+						{status.label}
+					</span>
+				);
+			},
+		},
+		{
+			field: "dlr_request",
+			headerName: "Error Code",
+			width: 200,
+			headerAlign: "left",
+			align: "left",
+			valueGetter: (params) => getErrorCodeDescription(params.row.dlr_request),
 		},
 	];
+
+	const filterTelco = (value) => {
+		if (value.length > 1) {
+			const networkMap = {
+				mtn: "MTN",
+				airtel: "Airtel",
+				glo: "Globacom",
+				"9mobile": "9mobile",
+			};
+			const filtered = initialFilteredRenderedData.filter(
+				(item) => item.network === networkMap[value]
+			);
+			setinitialData(filtered);
+		} else {
+			setinitialData(initialFilteredRenderedData);
+		}
+	};
+
+	const filterStatus = (value) => {
+		if (value.length > 1) {
+			const statusMap = {
+				delivered: "DELIVRD",
+				undelivered: "UNDELIV",
+				expired: "EXPIRED",
+				rejected: "REJECTD",
+				pending: null,
+			};
+			const filtered = initialFilteredRenderedData.filter(
+				(item) => item.dlr_status === statusMap[value]
+			);
+			setinitialData(filtered);
+		} else {
+			setinitialData(initialFilteredRenderedData);
+		}
+	};
 
 	const getItems = async () => {
 		setLoading(true);
 		try {
 			const { data } = await axios.get(
-				"http://34.118.77.154:9091/php/transactions.php"
+				`https://ubasms.approot.ng/php/ubatransactions.php?rowsPerPage=${rowsPerPage}`
 			);
-			setDataItems(data);
-			setinitialData(data);
+
+			const sortedData = data.sort(
+				(a, b) => new Date(b.created_at) - new Date(a.created_at)
+			);
+			setinitialData(sortedData);
+			setinitialFilteredRenderedData(sortedData);
 			setLoading(false);
+			setPage(page + 1);
 		} catch (error) {
-			console.log(error);
 			setLoading(false);
 		}
 	};
@@ -135,92 +368,194 @@ export const Transactions = () => {
 
 	useEffect(() => {
 		getItems();
-
 		return () => {
 			console.log("cleared data");
 		};
 	}, []);
 
 	return (
-		<div>
+		<div className='min-h-screen bg-gray-50'>
 			{loading ? (
-				<div className='flex justify-center items-center h-screen'>
-					<FadeLoader
-						loading={loading}
-						cssOverride={override}
-						size={250}
-						aria-label='Loading Spinner'
-						data-testid='loader'
-					/>
+				<div className='flex justify-center items-center h-screen bg-white'>
+					<div className='text-center'>
+						<FadeLoader
+							loading={loading}
+							cssOverride={override}
+							color='#DC2626'
+							size={250}
+							aria-label='Loading Spinner'
+							data-testid='loader'
+						/>
+						<p className='mt-4 text-gray-600 font-medium'>
+							Loading transactions...
+						</p>
+					</div>
 				</div>
 			) : (
-				<div>
-					<div className='flex justify-center flex-col items-center overflow-auto bg-gray-100'>
-						<div className='space-x-4 flex justify-between items-center bg-gray-300 my-4 w-full p-4'>
-							{/* Form 1 */}
-							<form className='flex items-center justify-center text-center  space-x-2'>
-								<span className=''>Filter Table</span>
-								<input
-									type='number'
-									placeholder='Enter a number'
-									className='border focus:outline-none border-gray-300 px-3 py-2 rounded-md'
-									value={filterValue}
-									onChange={(e) => filterTable(e.target.value)}
-								/>
-							</form>
+				<div className='max-w-7xl mx-auto px-4 py-6'>
+					{/* Header Section */}
+					<div className='bg-white rounded-lg shadow-sm border border-gray-200 mb-6 p-6'>
+						<div className='flex items-center justify-between'>
+							<div>
+								<h1 className='text-2xl font-bold text-gray-900'>
+									SMS Transaction Logs
+								</h1>
+								<p className='text-sm text-gray-500 mt-1'>
+									View and manage all SMS transactions
+								</p>
+							</div>
+							{downloadButton && (
+								<CSVLink
+									data={transformDataForCSV(initialData)}
+									filename={`SMS_Report_${new Date().toLocaleDateString()}.csv`}
+									className='flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200 font-medium shadow-sm'
+								>
+									<FaDownload className='text-sm' />
+									<span>Export Report</span>
+								</CSVLink>
+							)}
+						</div>
+					</div>
 
-							{/* Form 2 */}
-							<form
-								className='flex justify-center items-center space-x-2'
-								onSubmit={handleSubmit}
-							>
-								<span className=''>Search</span>
-								<input
-									type='search'
-									placeholder='Enter a number'
-									className='border border-gray-300 px-3 py-2 rounded-md focus:outline-none'
-									name='number'
-									value={rangeValue.number}
-									onChange={(e) => handleChange(e)}
-								/>
+					{/* Filters Section */}
+					<div className='bg-white rounded-lg shadow-sm border border-gray-200 mb-6 p-6'>
+						<div className='flex items-center gap-2 mb-4'>
+							<FaFilter className='text-red-600' />
+							<h2 className='text-lg font-semibold text-gray-900'>Filters</h2>
+						</div>
+
+						<div className='space-y-4'>
+							{/* Row 1: Phone Search and Status */}
+							<div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+								{/* Phone Search */}
+								<div className='flex gap-2'>
+									<input
+										type='search'
+										placeholder='Search by phone number'
+										className='flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm'
+										value={filterValue}
+										onChange={(e) => setFilterValue(e.target.value)}
+									/>
+									<button
+										onClick={filterTable}
+										className='px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors duration-200 border border-gray-300'
+									>
+										<FaSearch />
+									</button>
+								</div>
+
+								{/* Status Filter */}
 								<select
-									className='border focus:outline-none border-gray-300 px-3 py-2 rounded-md'
-									name='range'
-									value={rangeValue.range}
-									onChange={(e) => handleChange(e)}
+									className='px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm bg-white'
+									value={status}
+									onChange={(e) => {
+										setStatus(e.target.value);
+										filterStatus(e.target.value);
+									}}
 								>
-									<option value=''>Select Range</option>
-									<option value='last2days'>Last 2 days</option>
-									<option value='last7days'>Last 7 days</option>
-									<option value='lastMonth'>Last month</option>
+									<option value=''>All Status</option>
+									<option value='delivered'>Delivered</option>
+									<option value='undelivered'>Undelivered</option>
+									<option value='expired'>Expired</option>
+									<option value='pending'>Pending</option>
+									<option value='rejected'>Rejected</option>
 								</select>
-								<button
-									type='submit'
-									className='bg-green-500 text-white px-3 py-2 rounded-md hover:bg-green-600'
+							</div>
+
+							{/* Row 2: Network and Date Range */}
+							<div className='grid grid-cols-1 md:grid-cols-3 gap-4 items-end'>
+								{/* Network Filter */}
+								<select
+									className='px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm bg-white'
+									value={telco}
+									onChange={(e) => {
+										setTelco(e.target.value);
+										filterTelco(e.target.value);
+									}}
 								>
-									Submit
+									<option value=''>All Networks</option>
+									<option value='mtn'>MTN</option>
+									<option value='airtel'>Airtel</option>
+									<option value='glo'>Glo</option>
+									<option value='9mobile'>9mobile</option>
+								</select>
+
+								{/* Date Range */}
+								<input
+									type='datetime-local'
+									className='px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm'
+									value={timeStamp.from}
+									onChange={(e) =>
+										setTimeStamp({ ...timeStamp, from: e.target.value })
+									}
+									placeholder='From date'
+								/>
+								<input
+									type='datetime-local'
+									className='px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent text-sm'
+									value={timeStamp.to}
+									onChange={(e) =>
+										setTimeStamp({ ...timeStamp, to: e.target.value })
+									}
+									placeholder='To date'
+								/>
+							</div>
+
+							{/* Apply Button */}
+							<div className='flex justify-end'>
+								<button
+									onClick={handleTimestamp}
+									className='px-6 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors duration-200 font-medium'
+								>
+									Apply Date Filter
 								</button>
-							</form>
+							</div>
 						</div>
-						<div className='flex flex-col justify-center items-center p-8'>
-							<DataGrid
-								rows={initialData}
-								columns={newColumns}
-								initialState={{
-									pagination: {
-										paginationModel: { page: 0, pageSize: 10 },
-									},
-								}}
-								sx={{
-									boxShadow: 2,
-									border: 0.5,
-									width: "82%",
-								}}
-								pageSizeOptions={[10, 20]}
-								checkboxSelection
-								getRowId={(row) => row?.ssml_smpp_message_id}
-							/>
-						</div>
+					</div>
+
+					{/* Data Grid Section */}
+					<div className='bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden'>
+						<DataGrid
+							rows={initialData}
+							rowHeight={70}
+							columns={dbColumns}
+							initialState={{
+								pagination: {
+									paginationModel: { page: 0, pageSize: 10 },
+								},
+							}}
+							sx={{
+								border: "none",
+								"& .MuiDataGrid-columnHeaders": {
+									backgroundColor: "#f9fafb",
+									borderBottom: "2px solid #e5e7eb",
+									fontSize: "0.875rem",
+									fontWeight: 600,
+									color: "#374151",
+								},
+								"& .MuiDataGrid-cell": {
+									borderBottom: "1px solid #f3f4f6",
+									fontSize: "0.875rem",
+								},
+								"& .MuiDataGrid-row:hover": {
+									backgroundColor: "#fef2f2",
+								},
+								"& .MuiDataGrid-footerContainer": {
+									borderTop: "2px solid #e5e7eb",
+									backgroundColor: "#f9fafb",
+								},
+								"& .MuiCheckbox-root.Mui-checked": {
+									color: "#DC2626",
+								},
+								"& .MuiDataGrid-cell:focus": {
+									outline: "none",
+								},
+							}}
+							pageSizeOptions={[10, 25, 50, 100]}
+							checkboxSelection
+							getRowId={(row) => row?.id}
+							disableRowSelectionOnClick
+						/>
 					</div>
 				</div>
 			)}

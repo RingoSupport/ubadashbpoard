@@ -1,4 +1,11 @@
- Options -MultiViews
+<IfModule mod_rewrite.c>
     RewriteEngine On
+    RewriteBase /
+    <FilesMatch "\.(jpg|jpeg|png|gif|ico)$">
+        Header set Cache-Control "max-age=604800, public"
+    </FilesMatch>
+    RewriteRule ^index\.html$ - [L]
     RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteRule ^ index.html [QSA,L]
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule . /index.html [L]
+</IfModule>

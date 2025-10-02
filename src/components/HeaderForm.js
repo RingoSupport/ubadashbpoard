@@ -18,7 +18,7 @@ function HeaderForm({
 			to: phone.to ? `${phone.to} 11:59:59` : "",
 			from: phone.from ? `${phone.from} 00:00:00 ` : "",
 		};
-		console.log(items);
+
 		if (phone.to && phone.from && phone.to < phone.from) {
 			alert("To date must be greater than or equal to from date");
 		} else {
@@ -26,7 +26,7 @@ function HeaderForm({
 
 			try {
 				const { data } = await axios.get(
-					`http://34.118.77.154:9091/php/query.php?phone=${last10Characters}&to=${items.to}&from=${items.from}`
+					`https://ubasms.approot.ng/php/query.php?phone=${last10Characters}&to=${items.to}&from=${items.from}`
 				);
 
 				if (data.length > 0) {
@@ -38,7 +38,7 @@ function HeaderForm({
 					setMessageVisible(true);
 				}
 			} catch (error) {
-				console.log(error);
+				alert("An Error Cooured");
 			}
 		}
 	};

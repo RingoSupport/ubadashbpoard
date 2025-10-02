@@ -51,9 +51,8 @@ function App() {
 
 			try {
 				const { data } = await axios.get(
-					`http://34.118.77.154:9091/php/query.php?phone=${last10Characters}&to=${items.to}&from=${items.from}`
+					`https://ubasms.approot.ng/php/query.php?phone=${last10Characters}&to=${items.to}&from=${items.from}`
 				);
-				console.log(data);
 
 				if (data.length > 0) {
 					setTableVisible(true);
@@ -63,9 +62,7 @@ function App() {
 					setTableVisible();
 					setMessageVisible(true);
 				}
-			} catch (error) {
-				console.log(error);
-			}
+			} catch (error) {}
 		}
 	};
 
@@ -78,12 +75,11 @@ function App() {
 			try {
 				setIsLoading(true); // Set loading to true while fetching data
 				const { data } = await axios.get(
-					"http://34.118.77.154:9091/php/check.php"
+					"https://ubasms.approot.ng/php/check.php"
 				);
 				setItems(data);
 				setIsLoading(false); // Set loading back to false after data is fetched
 			} catch (error) {
-				console.log(error);
 				setIsLoading(false); // Set loading to false in case of an error
 			}
 		}
